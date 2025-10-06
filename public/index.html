@@ -1,0 +1,876 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>WCAG 2.2 AA Accessibility Auditor | Virtus Umbra</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-dark: #0f172a;
+            --bg-darker: #020617;
+            --purple: #a855f7;
+            --purple-dark: #9333ea;
+            --purple-light: #c084fc;
+            --text-primary: #f8fafc;
+            --text-secondary: #cbd5e1;
+            --text-muted: #64748b;
+            --glass-bg: rgba(255, 255, 255, 0.05);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --success: #10b981;
+            --warning: #f59e0b;
+            --error: #ef4444;
+            --critical: #dc2626;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-darker);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+            position: relative;
+        }
+
+        /* Animated gradient background */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background:
+                radial-gradient(circle at 20% 50%, rgba(168, 85, 247, 0.15) 0%, transparent 50%),
+                radial-gradient(circle at 80% 80%, rgba(147, 51, 234, 0.15) 0%, transparent 50%),
+                linear-gradient(135deg, var(--bg-dark) 0%, var(--bg-darker) 100%);
+            z-index: -1;
+            animation: gradientShift 15s ease infinite;
+        }
+
+        @keyframes gradientShift {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.8; }
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 60px 20px;
+            animation: fadeIn 0.6s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Header */
+        header {
+            text-align: center;
+            margin-bottom: 48px;
+        }
+
+        .logo {
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 24px;
+            padding: 8px 20px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--glass-border);
+            border-radius: 100px;
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--purple-light);
+            text-decoration: none;
+            transition: all 0.3s ease;
+        }
+
+        .logo:hover {
+            background: rgba(168, 85, 247, 0.1);
+            border-color: rgba(168, 85, 247, 0.3);
+            transform: translateY(-2px);
+        }
+
+        .logo::before {
+            content: '◆';
+            font-size: 1rem;
+        }
+
+        h1 {
+            font-size: clamp(2rem, 5vw, 3.5rem);
+            font-weight: 800;
+            margin-bottom: 16px;
+            background: linear-gradient(135deg, var(--purple-light) 0%, var(--purple) 50%, var(--purple-dark) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            line-height: 1.2;
+        }
+
+        .subtitle {
+            font-size: 1.125rem;
+            color: var(--text-secondary);
+            max-width: 600px;
+            margin: 0 auto;
+            line-height: 1.6;
+        }
+
+        /* Card */
+        .card {
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: 24px;
+            padding: 40px;
+            box-shadow:
+                0 20px 50px rgba(0, 0, 0, 0.5),
+                inset 0 1px 0 rgba(255, 255, 255, 0.1);
+            margin-bottom: 24px;
+            transition: all 0.3s ease;
+        }
+
+        .card:hover {
+            border-color: rgba(168, 85, 247, 0.2);
+        }
+
+        /* Info Box */
+        .info-box {
+            background: rgba(168, 85, 247, 0.05);
+            border: 1px solid rgba(168, 85, 247, 0.2);
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 32px;
+        }
+
+        .info-box h3 {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--purple-light);
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .info-box ul {
+            list-style: none;
+            display: grid;
+            gap: 8px;
+        }
+
+        .info-box li {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            padding-left: 24px;
+            position: relative;
+        }
+
+        .info-box li::before {
+            content: '✓';
+            position: absolute;
+            left: 0;
+            color: var(--purple);
+            font-weight: 700;
+        }
+
+        /* Form */
+        .form-group {
+            margin-bottom: 24px;
+        }
+
+        label {
+            display: block;
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+        }
+
+        input[type="text"],
+        input[type="number"] {
+            width: 100%;
+            padding: 14px 18px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            color: var(--text-primary);
+            font-size: 1rem;
+            font-family: inherit;
+            transition: all 0.3s ease;
+        }
+
+        input[type="text"]:focus,
+        input[type="number"]:focus {
+            outline: none;
+            background: rgba(255, 255, 255, 0.08);
+            border-color: var(--purple);
+            box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.1);
+        }
+
+        input::placeholder {
+            color: var(--text-muted);
+        }
+
+        /* Checkbox */
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 16px;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .checkbox-group:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+            accent-color: var(--purple);
+        }
+
+        .checkbox-group label {
+            margin: 0;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        /* Button */
+        .btn {
+            width: 100%;
+            padding: 16px 32px;
+            background: linear-gradient(135deg, var(--purple) 0%, var(--purple-dark) 100%);
+            border: none;
+            border-radius: 12px;
+            color: white;
+            font-size: 1rem;
+            font-weight: 600;
+            font-family: inherit;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, var(--purple-light) 0%, var(--purple) 100%);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .btn:hover:not(:disabled)::before {
+            opacity: 1;
+        }
+
+        .btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(168, 85, 247, 0.4);
+        }
+
+        .btn:active:not(:disabled) {
+            transform: translateY(0);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn span {
+            position: relative;
+            z-index: 1;
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, var(--success) 0%, #059669 100%);
+        }
+
+        .btn-success:hover:not(:disabled) {
+            box-shadow: 0 10px 30px rgba(16, 185, 129, 0.4);
+        }
+
+        /* Loading State */
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 40px 0;
+        }
+
+        .spinner {
+            width: 48px;
+            height: 48px;
+            border: 4px solid rgba(168, 85, 247, 0.1);
+            border-top-color: var(--purple);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto 24px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .loading-message {
+            font-size: 1rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            margin-bottom: 24px;
+        }
+
+        /* Progress Bar */
+        .progress-container {
+            margin-top: 24px;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 100px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--purple) 0%, var(--purple-light) 100%);
+            border-radius: 100px;
+            width: 0%;
+            transition: width 0.5s ease;
+            position: relative;
+        }
+
+        .progress-fill::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+            animation: shimmer 2s infinite;
+        }
+
+        @keyframes shimmer {
+            to { transform: translateX(100%); }
+        }
+
+        .progress-details {
+            margin-top: 12px;
+            font-size: 0.875rem;
+            color: var(--text-muted);
+        }
+
+        /* Page List */
+        .page-list {
+            max-height: 200px;
+            overflow-y: auto;
+            margin-top: 20px;
+            padding: 16px;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 12px;
+            border: 1px solid var(--glass-border);
+        }
+
+        .page-list::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .page-list::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 4px;
+        }
+
+        .page-list::-webkit-scrollbar-thumb {
+            background: var(--purple);
+            border-radius: 4px;
+        }
+
+        .page-list strong {
+            display: block;
+            font-size: 0.875rem;
+            color: var(--purple-light);
+            margin-bottom: 12px;
+        }
+
+        .page-list div {
+            padding: 6px 0;
+            font-size: 0.8125rem;
+            color: var(--text-secondary);
+            font-family: 'Monaco', 'Courier New', monospace;
+        }
+
+        /* Results */
+        .result {
+            display: none;
+        }
+
+        .result-header {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+
+        .result-header h3 {
+            font-size: 1.5rem;
+            color: var(--success);
+            margin-bottom: 8px;
+        }
+
+        /* Stats Grid */
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 16px;
+            margin-bottom: 32px;
+        }
+
+        .stat {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            padding: 20px;
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+
+        .stat:hover {
+            background: rgba(255, 255, 255, 0.05);
+            transform: translateY(-4px);
+        }
+
+        .stat-value {
+            font-size: 2.5rem;
+            font-weight: 800;
+            margin-bottom: 8px;
+            line-height: 1;
+        }
+
+        .stat-label {
+            font-size: 0.875rem;
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+
+        .stat-critical .stat-value { color: var(--critical); }
+        .stat-serious .stat-value { color: var(--error); }
+        .stat-moderate .stat-value { color: var(--warning); }
+        .stat-minor .stat-value { color: #3b82f6; }
+        .stat-total .stat-value { color: var(--purple-light); }
+
+        /* Error */
+        .error {
+            display: none;
+            padding: 20px;
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: 16px;
+            color: var(--error);
+            margin-top: 24px;
+        }
+
+        /* Footer */
+        footer {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--text-muted);
+            font-size: 0.875rem;
+        }
+
+        footer a {
+            color: var(--purple-light);
+            text-decoration: none;
+            transition: color 0.3s ease;
+        }
+
+        footer a:hover {
+            color: var(--purple);
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .container {
+                padding: 40px 16px;
+            }
+
+            .card {
+                padding: 24px;
+            }
+
+            h1 {
+                font-size: 2rem;
+            }
+
+            .stats {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 480px) {
+            .stats {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <a href="https://virtus-umbra.ai" class="logo">Virtus Umbra</a>
+            <h1>WCAG 2.2 AA Auditor</h1>
+            <p class="subtitle">
+                Professionelle Barrierefreiheits-Prüfung mit detailliertem PDF-Report
+            </p>
+        </header>
+
+        <main>
+            <div class="card">
+                <div class="info-box">
+                    <h3>
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M8 14.5C11.5899 14.5 14.5 11.5899 14.5 8C14.5 4.41015 11.5899 1.5 8 1.5C4.41015 1.5 1.5 4.41015 1.5 8C1.5 11.5899 4.41015 14.5 8 14.5Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                            <path d="M8 10.5V8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                            <path d="M8 5.5H8.0075" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                        Funktionsweise
+                    </h3>
+                    <ul>
+                        <li>Automatisches Crawling aller Unterseiten</li>
+                        <li>WCAG 2.2 AA Konformitätsprüfung mit axe-core</li>
+                        <li>Eindeutige Fehler-Deduplizierung über alle Seiten</li>
+                        <li>Detaillierter PDF-Report mit Handlungsempfehlungen</li>
+                        <li>100% lokal, DSGVO-konform, Open Source</li>
+                    </ul>
+                </div>
+
+                <form id="auditForm">
+                    <div class="form-group">
+                        <label for="url">Website URL</label>
+                        <input
+                            type="text"
+                            id="url"
+                            name="url"
+                            placeholder="https://example.com"
+                            required
+                            pattern="https?://.+"
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <label for="maxPages">Maximale Seitenanzahl</label>
+                        <input
+                            type="number"
+                            id="maxPages"
+                            name="maxPages"
+                            min="1"
+                            max="100"
+                            value="50"
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <div class="checkbox-group">
+                            <input
+                                type="checkbox"
+                                id="followExternal"
+                                name="followExternal"
+                            >
+                            <label for="followExternal">Externe Links folgen</label>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn" id="submitBtn">
+                        <span>Audit starten</span>
+                    </button>
+                </form>
+
+                <div class="loading" id="loading">
+                    <div class="spinner"></div>
+                    <p class="loading-message" id="loadingMessage">Analysiere Website...</p>
+                    <div class="progress-container">
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="progressFill"></div>
+                        </div>
+                        <div class="progress-details" id="progressDetails"></div>
+                    </div>
+                    <div class="page-list" id="pageList" style="display: none;"></div>
+                </div>
+
+                <div class="error" id="error"></div>
+            </div>
+
+            <div class="result" id="result">
+                <div class="card">
+                    <div class="result-header">
+                        <h3>✓ Audit erfolgreich abgeschlossen</h3>
+                    </div>
+
+                    <div class="stats">
+                        <div class="stat stat-total">
+                            <div class="stat-value" id="totalPages">0</div>
+                            <div class="stat-label">Seiten geprüft</div>
+                        </div>
+                        <div class="stat stat-total">
+                            <div class="stat-value" id="totalViolations">0</div>
+                            <div class="stat-label">Eindeutige Fehler</div>
+                        </div>
+                        <div class="stat stat-critical">
+                            <div class="stat-value" id="criticalIssues">0</div>
+                            <div class="stat-label">Kritisch</div>
+                        </div>
+                        <div class="stat stat-serious">
+                            <div class="stat-value" id="seriousIssues">0</div>
+                            <div class="stat-label">Schwerwiegend</div>
+                        </div>
+                        <div class="stat stat-moderate">
+                            <div class="stat-value" id="moderateIssues">0</div>
+                            <div class="stat-label">Mittel</div>
+                        </div>
+                        <div class="stat stat-minor">
+                            <div class="stat-value" id="minorIssues">0</div>
+                            <div class="stat-label">Geringfügig</div>
+                        </div>
+                    </div>
+
+                    <button class="btn btn-success" id="downloadBtn">
+                        <span>📄 PDF-Report herunterladen</span>
+                    </button>
+                </div>
+            </div>
+        </main>
+
+        <footer>
+            <p>
+                Entwickelt von <a href="https://virtus-umbra.ai" target="_blank">Virtus Umbra</a>
+                • 100% Open Source • DSGVO-konform
+            </p>
+        </footer>
+    </div>
+
+    <script>
+        const form = document.getElementById('auditForm');
+        const submitBtn = document.getElementById('submitBtn');
+        const loading = document.getElementById('loading');
+        const result = document.getElementById('result');
+        const error = document.getElementById('error');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const loadingMessage = document.getElementById('loadingMessage');
+        const progressFill = document.getElementById('progressFill');
+        const progressDetails = document.getElementById('progressDetails');
+        const pageList = document.getElementById('pageList');
+
+        let downloadUrl = '';
+        const socket = io();
+
+        // Session persistence
+        function saveSession(data) {
+            localStorage.setItem('auditSession', JSON.stringify(data));
+        }
+
+        function loadSession() {
+            const session = localStorage.getItem('auditSession');
+            return session ? JSON.parse(session) : null;
+        }
+
+        function clearSession() {
+            localStorage.removeItem('auditSession');
+        }
+
+        socket.on('connect', () => {
+            console.log('WebSocket connected:', socket.id);
+
+            // Check for existing session
+            const session = loadSession();
+            if (session && session.jobId) {
+                if (session.status === 'running') {
+                    console.log('Resuming job:', session.jobId);
+                    socket.emit('resume', session.jobId);
+
+                    // Restore UI state
+                    loading.style.display = 'block';
+                    result.style.display = 'none';
+                    error.style.display = 'none';
+                    submitBtn.disabled = true;
+                    loadingMessage.textContent = session.lastMessage || 'Verbindung wird wiederhergestellt...';
+                    progressFill.style.width = (session.progress || 0) + '%';
+
+                    if (session.pages) {
+                        pageList.style.display = 'block';
+                        pageList.innerHTML = '<strong>Gefundene Seiten:</strong>' +
+                            session.pages.map(p => `<div>• ${p}</div>`).join('');
+                    }
+                } else if (session.status === 'complete') {
+                    console.log('Loading completed session:', session);
+                    displayResults(session.report, session.downloadUrl);
+                }
+            }
+        });
+
+        socket.on('progress', (data) => {
+            console.log('Progress update:', data);
+            loadingMessage.textContent = data.message;
+            progressFill.style.width = data.progress + '%';
+
+            const session = loadSession() || {};
+            const sessionData = {
+                ...session,
+                status: 'running',
+                progress: data.progress,
+                lastMessage: data.message,
+                pages: data.pages || session.pages,
+                timestamp: Date.now()
+            };
+            saveSession(sessionData);
+
+            if (data.stage === 'discovered' && data.pages) {
+                pageList.style.display = 'block';
+                pageList.innerHTML = '<strong>Gefundene Seiten:</strong>' +
+                    data.pages.map(p => `<div>• ${p}</div>`).join('');
+            }
+
+            if (data.currentPage) {
+                progressDetails.textContent = `Aktuell: ${data.currentPage}`;
+            }
+
+            if (data.violations !== undefined) {
+                progressDetails.textContent = `${data.violations} eindeutige Violations gefunden`;
+            }
+        });
+
+        socket.on('error', (data) => {
+            console.error('Socket error:', data);
+            error.style.display = 'block';
+            error.textContent = '❌ ' + data.message;
+            loading.style.display = 'none';
+            submitBtn.disabled = false;
+            clearSession();
+        });
+
+        function displayResults(report, url) {
+            document.getElementById('totalPages').textContent = report.totalPages;
+            document.getElementById('totalViolations').textContent = report.totalViolations;
+            document.getElementById('criticalIssues').textContent = report.criticalIssues;
+            document.getElementById('seriousIssues').textContent = report.seriousIssues;
+            document.getElementById('moderateIssues').textContent = report.moderateIssues;
+            document.getElementById('minorIssues').textContent = report.minorIssues;
+            downloadUrl = url;
+            loading.style.display = 'none';
+            result.style.display = 'block';
+            submitBtn.disabled = false;
+        }
+
+        socket.on('complete', (data) => {
+            console.log('Audit complete:', data);
+
+            const session = loadSession() || {};
+            saveSession({
+                ...session,
+                status: 'complete',
+                report: data.report,
+                downloadUrl: data.downloadUrl,
+                progress: 100,
+                timestamp: Date.now()
+            });
+
+            displayResults(data.report, data.downloadUrl);
+        });
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const url = document.getElementById('url').value.trim();
+            const maxPages = parseInt(document.getElementById('maxPages').value);
+            const followExternal = document.getElementById('followExternal').checked;
+
+            clearSession();
+
+            error.style.display = 'none';
+            result.style.display = 'none';
+            loading.style.display = 'block';
+            pageList.style.display = 'none';
+            progressFill.style.width = '0%';
+            progressDetails.textContent = '';
+            submitBtn.disabled = true;
+
+            try {
+                console.log('Starting audit for:', url);
+
+                const response = await fetch('/api/audit', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        url,
+                        maxPages,
+                        followExternal,
+                        socketId: socket.id
+                    }),
+                });
+
+                console.log('Response status:', response.status);
+                const data = await response.json();
+                console.log('Response data:', data);
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'Audit fehlgeschlagen');
+                }
+
+                console.log('Audit job started:', data.message, 'Job ID:', data.jobId);
+
+                saveSession({
+                    jobId: data.jobId,
+                    status: 'running',
+                    url: url,
+                    progress: 0,
+                    lastMessage: 'Audit gestartet...',
+                    timestamp: Date.now()
+                });
+
+            } catch (err) {
+                loading.style.display = 'none';
+                error.style.display = 'block';
+                error.textContent = '❌ Fehler: ' + err.message;
+                submitBtn.disabled = false;
+            }
+        });
+
+        downloadBtn.addEventListener('click', () => {
+            if (downloadUrl) {
+                window.location.href = downloadUrl;
+            }
+        });
+    </script>
+</body>
+</html>
