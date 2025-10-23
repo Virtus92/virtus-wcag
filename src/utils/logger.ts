@@ -20,7 +20,10 @@ const LOG_LEVEL_MAP: Record<string, LogLevel> = {
   error: LogLevel.ERROR,
 };
 
-const currentLogLevel = LOG_LEVEL_MAP[loggingConfig.level] || LogLevel.INFO;
+function shouldLog(level: LogLevel): boolean {
+  const currentLevel = LOG_LEVEL_MAP[loggingConfig.level] ?? LogLevel.INFO;
+  return loggingConfig.enableConsole && currentLevel <= level;
+}
 
 interface LogEntry {
   timestamp: string;
@@ -50,7 +53,7 @@ export const logger = {
    * Logs debug messages (only in development)
    */
   debug(message: string, context?: Record<string, any>): void {
-    if (currentLogLevel <= LogLevel.DEBUG && loggingConfig.enableConsole) {
+    if (shouldLog(LogLevel.DEBUG)) {
       console.log(formatLogEntry('debug', message, context));
     }
   },
@@ -59,7 +62,7 @@ export const logger = {
    * Logs informational messages
    */
   info(message: string, context?: Record<string, any>): void {
-    if (currentLogLevel <= LogLevel.INFO && loggingConfig.enableConsole) {
+    if (shouldLog(LogLevel.INFO)) {
       console.log(formatLogEntry('info', message, context));
     }
   },
@@ -68,7 +71,7 @@ export const logger = {
    * Logs warning messages
    */
   warn(message: string, context?: Record<string, any>): void {
-    if (currentLogLevel <= LogLevel.WARN && loggingConfig.enableConsole) {
+    if (shouldLog(LogLevel.WARN)) {
       console.warn(formatLogEntry('warn', message, context));
     }
   },
@@ -77,7 +80,7 @@ export const logger = {
    * Logs error messages
    */
   error(message: string, error?: Error | any, context?: Record<string, any>): void {
-    if (currentLogLevel <= LogLevel.ERROR && loggingConfig.enableConsole) {
+    if (shouldLog(LogLevel.ERROR)) {
       const errorContext = error
         ? {
             ...context,

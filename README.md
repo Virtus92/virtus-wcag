@@ -9,7 +9,7 @@
 
 **Professionelle Barrierefreiheits-Prüfung mit automatischem Crawling und Enterprise PDF-Reports**
 
-[Features](#-features) • [Installation](#-installation) • [API](#-api) • [Konfiguration](#-konfiguration) • [Deployment](#-production-deployment)
+[Features](#-features) • [Installation](#-installation--start) • [Konfiguration](#-konfiguration) • [Testing](#-testing) • [Docker](#-docker-details)
 
 </div>
 
@@ -122,12 +122,34 @@ Der generierte PDF-Report enthält:
 ### Environment Variables (.env)
 
 ```env
-PORT=3000                          # Server Port
+# Server
+PORT=3000
 NODE_ENV=development               # development | production
-MAX_PAGES_PER_SCAN=50             # Maximale Seiten pro Scan
-RATE_LIMIT_WINDOW_MS=900000       # Rate Limit Zeitfenster (15min)
-RATE_LIMIT_MAX_REQUESTS=10        # Max Requests pro Zeitfenster
+
+# Rate Limiting
+RATE_LIMIT_WINDOW_MS=900000       # 15 Minuten
+RATE_LIMIT_MAX_REQUESTS=10        # Max Requests pro IP
+
+# Audit Configuration
+MAX_PAGES_DEFAULT=50              # Standard Seitenlimit
+MAX_PAGES_LIMIT=100               # Absolutes Maximum
+CRAWL_TIMEOUT_MS=45000            # Navigation Timeout
+AUDIT_CONCURRENCY=3               # Parallele Audits
+CONTENT_WAIT_MS=2000              # Wartezeit für dynamischen Content
+CRAWL_MAX_DEPTH=4                 # Maximale Crawl-Tiefe
+CRAWL_MAX_TIME_MS=120000          # Gesamtes Crawl-Zeitbudget
+
+# Logging
+LOG_LEVEL=info                    # debug | info | warn | error
+LOG_CONSOLE=true                  # Console Logging aktiviert
+LOG_JSON=false                    # JSON Format für Logs
+
+# Job Management
+JOB_CLEANUP_INTERVAL_MS=600000    # Cleanup alle 10 Min
+JOB_MAX_AGE_MS=3600000            # Max Job-Alter (1 Stunde)
 ```
+
+Vollständige Konfiguration siehe `.env.example`
 
 ## 🏗️ Architektur
 
@@ -152,43 +174,73 @@ RATE_LIMIT_MAX_REQUESTS=10        # Max Requests pro Zeitfenster
 
 ### Tech Stack
 
-- **Backend**: Node.js + TypeScript + Express
-- **Testing**: Playwright + axe-core
-- **PDF**: PDFKit
+- **Backend**: Node.js + TypeScript + Express + Socket.IO
+- **Testing**: Vitest + Playwright + axe-core
+- **PDF**: PDFKit (Executive & Professional Reports)
 - **Security**: Helmet, express-rate-limit, Zod
 - **Frontend**: Vanilla HTML/CSS/JS (keine Dependencies)
+- **DevOps**: Docker + Docker Compose + GitHub Actions
 
 ## 📁 Projektstruktur
 
 ```
 .
 ├── src/
-│   ├── server.ts              # Express Server
-│   ├── crawler.ts             # Web Crawler
-│   ├── auditor.ts             # WCAG Auditor
-│   ├── pdf-generator.ts       # PDF Generator
-│   ├── types.ts               # TypeScript Typen
+│   ├── server.ts                      # Express Server + Socket.IO
+│   ├── crawler.ts                     # Web Crawler (Playwright)
+│   ├── auditor.ts                     # WCAG Auditor (Basic)
+│   ├── auditor-enhanced.ts            # Enhanced WCAG Auditor
+│   ├── pdf-generator-executive.ts     # Executive PDF Reports
+│   ├── pdf-generator-pro.ts           # Professional PDF Reports
+│   ├── config.ts                      # Configuration Management
+│   ├── types.ts                       # TypeScript Definitions
 │   └── utils/
-│       └── validation.ts      # Input Validation
+│       ├── validation.ts              # Input Validation (Zod)
+│       ├── logger.ts                  # Logging Utilities
+│       ├── url.ts                     # URL Processing
+│       └── stability.ts               # Stability Utilities
+├── tests/                             # Vitest Test Suite
 ├── public/
-│   └── index.html             # Web Interface
-├── reports/                   # Generierte PDFs (nicht versioniert)
-├── package.json
-├── tsconfig.json
-└── Dockerfile
+│   └── index.html                     # Web Interface
+├── reports/                           # Generated PDFs (gitignored)
+├── .github/workflows/                 # CI/CD Pipelines
+├── AGENTS.md                          # Development Guidelines
+├── SECURITY.md                        # Security Documentation
+├── docker-compose.yml                 # Docker Compose Config
+├── Dockerfile                         # Production Container
+├── vitest.config.ts                   # Vitest Configuration
+├── tsconfig.json                      # TypeScript Config (App)
+├── tsconfig.tests.json                # TypeScript Config (Tests)
+└── package.json
 ```
 
 ## 🧪 Testing
 
 ```bash
-# Tests ausführen (wenn vorhanden)
-npm test
+# Unit & Integration Tests
+npm test                    # Vitest watch mode
+npm run test:ci            # CI mode with coverage
+npm run coverage           # Generate coverage report
 
-# Manueller Test
+# Type Checking
+npm run typecheck          # Check all TypeScript types
+
+# Manual API Test
 curl -X POST http://localhost:3000/api/audit \
   -H "Content-Type: application/json" \
   -d '{"url":"https://example.com","maxPages":5}'
 ```
+
+## 🔄 CI/CD
+
+GitHub Actions Pipelines automatisieren:
+- **Type Checking**: TypeScript Typenprüfung
+- **Unit Tests**: Vitest mit Coverage-Reporting
+- **Integration Tests**: End-to-End Validierung
+- **Build Verification**: Production Build Testing
+- **Security Scanning**: Dependency Audit
+
+Workflows siehe `.github/workflows/`
 
 ## 🐳 Docker Details
 
@@ -222,15 +274,18 @@ docker run -p 3000:3000 -e MAX_PAGES_PER_SCAN=100 wcag-audit-tool
 ```nginx
 server {
     listen 443 ssl http2;
-    server_name audit.example.com;
+    server_name audit.yourdomain.com;
 
-    ssl_certificate /path/to/cert.pem;
-    ssl_certificate_key /path/to/key.pem;
+    ssl_certificate /etc/letsencrypt/live/audit.yourdomain.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/audit.yourdomain.com/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
 
     location / {
         proxy_pass http://localhost:3000;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
     }
 }
 ```
@@ -256,25 +311,37 @@ Contributions sind willkommen! Bitte:
 
 ## 🔮 Roadmap
 
+### ✅ Implementiert
+- [x] Vitest Testing Framework
+- [x] CI/CD mit GitHub Actions
+- [x] Executive PDF Reports
+- [x] Enhanced WCAG Auditor
+- [x] Socket.IO Realtime Updates
+- [x] Comprehensive Logging
+
+### 🚧 Geplant
 - [ ] Authentifizierung für geschützte Bereiche
-- [ ] Scheduled Scans
-- [ ] Vergleich von Scan-Ergebnissen
+- [ ] Scheduled Scans & Cron Jobs
+- [ ] Vergleich von Scan-Ergebnissen (Diff)
 - [ ] REST API mit API-Keys
 - [ ] Webhook-Benachrichtigungen
 - [ ] Multi-Tenant Support
+- [ ] Grafische Trend-Analysen
+- [ ] Custom WCAG Rule Sets
 
 ## 📞 Support
 
 Bei Fragen oder Problemen:
-- Issue erstellen auf GitHub
-- Dokumentation prüfen
-- Logs checken (`docker logs` oder Console)
+- **GitHub Issues**: Erstelle ein Issue im Repository
+- **Email**: info@dinel.at
+- **Dokumentation**: Siehe README.md, SECURITY.md, AGENTS.md
+- **Logs**: `docker logs <container>` oder Console Output prüfen
 
 ---
 
 <div align="center">
 
-**Entwickelt mit 💜 von [Virtus Umbra](https://virtus-umbra.ai)**
+**Entwickelt von [Dinel Kurtovic](https://virtus-umbra.ai) | Virtus Umbra**
 
 100% Open Source • DSGVO-konform • Made with TypeScript
 

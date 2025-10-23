@@ -4,14 +4,17 @@ import cors from 'cors';
 import rateLimit from 'express-rate-limit';
 import { config } from 'dotenv';
 import { join } from 'path';
-import { mkdir } from 'fs/promises';
+import { mkdir, writeFile } from 'fs/promises';
 import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 import { WebCrawler } from './crawler';
-import { WCAGAuditor } from './auditor';
-import { EnterpriseReportGenerator } from './pdf-generator-pro';
+import { EnhancedWCAGAuditor } from './auditor-enhanced';
+import { ExecutiveReportGenerator } from './pdf-generator-executive';
 import { auditRequestSchema, ValidatedAuditRequest } from './utils/validation';
 import crypto from 'crypto';
+import { auditConfig, jobConfig, loggingConfig, serverConfig } from './config';
+import logger from './utils/logger';
+import { chromium } from 'playwright';
 
 config();
 
@@ -23,7 +26,7 @@ const io = new SocketIOServer(httpServer, {
     methods: ['GET', 'POST']
   }
 });
-const PORT = process.env.PORT || 3000;
+const PORT = serverConfig.port;
 
 // Job tracking
 interface JobStatus {
@@ -38,17 +41,24 @@ interface JobStatus {
 }
 
 const jobs = new Map<string, JobStatus>();
+const metrics = {
+  totalJobs: 0,
+  completedJobs: 0,
+  failedJobs: 0,
+  pagesCrawled: 0,
+  violationsFound: 0,
+};
 
 // Clean up old jobs (older than 1 hour)
 setInterval(() => {
   const oneHourAgo = Date.now() - 3600000;
   for (const [jobId, job] of jobs.entries()) {
     if (job.timestamp < oneHourAgo) {
-      console.log(`Cleaning up old job: ${jobId}`);
+      logger.info('Cleaning up old job', { jobId });
       jobs.delete(jobId);
     }
   }
-}, 600000); // Run every 10 minutes
+}, jobConfig.cleanupIntervalMs); // Run on configured interval
 
 // Trust proxy for rate limiter
 app.set('trust proxy', 1);
@@ -80,9 +90,10 @@ const limiter = rateLimit({
 
 app.use('/api/', limiter);
 
-// Ensure reports directory exists
+// Ensure reports and HAR directories exist
 const REPORTS_DIR = join(__dirname, '../reports');
-mkdir(REPORTS_DIR, { recursive: true }).catch(console.error);
+mkdir(REPORTS_DIR, { recursive: true }).catch(err => logger.error('Failed to create reports dir', err));
+mkdir(join(__dirname, '..', auditConfig.harDir), { recursive: true }).catch(() => {});
 
 // Health check
 app.get('/api/health', (req: Request, res: Response) => {
@@ -91,13 +102,13 @@ app.get('/api/health', (req: Request, res: Response) => {
 
 // Socket.IO connection handling
 io.on('connection', (socket) => {
-  console.log('Client connected:', socket.id);
+  logger.debug('Client connected', { socketId: socket.id });
 
   // Client can request job status on reconnect
   socket.on('resume', (jobId: string) => {
     const job = jobs.get(jobId);
     if (job) {
-      console.log(`Client ${socket.id} resuming job ${jobId}`);
+      logger.debug('Client resuming job', { socketId: socket.id, jobId });
       job.socketId = socket.id; // Update socket ID
 
       if (job.status === 'complete') {
@@ -129,15 +140,16 @@ app.post('/api/audit', async (req: Request, res: Response, next: NextFunction) =
 
     console.log('Starting audit for:', validatedRequest.url, 'Job ID:', jobId);
 
-    // Initialize job status
-    jobs.set(jobId, {
+  // Initialize job status
+  jobs.set(jobId, {
       jobId,
       socketId,
       status: 'running',
       progress: 0,
       message: 'Starting...',
-      timestamp: Date.now()
-    });
+    timestamp: Date.now()
+  });
+    metrics.totalJobs += 1;
 
     // Return immediately with job accepted
     res.json({
@@ -159,7 +171,7 @@ app.post('/api/audit', async (req: Request, res: Response, next: NextFunction) =
     });
 
   } catch (error: any) {
-    console.error('Audit error:', error);
+    logger.error('Audit error', error);
 
     if (error.name === 'ZodError') {
       return res.status(400).json({
@@ -189,7 +201,7 @@ async function runAuditJob(validatedRequest: ValidatedAuditRequest, jobId: strin
   };
 
   try {
-    console.log('Starting background audit for:', validatedRequest.url);
+    logger.info('Starting background audit', { url: validatedRequest.url });
     emitToJob('progress', { stage: 'crawling', message: 'Initializing crawler...', progress: 5 });
     updateJobStatus({ progress: 5, message: 'Initializing crawler...' });
 
@@ -204,7 +216,8 @@ async function runAuditJob(validatedRequest: ValidatedAuditRequest, jobId: strin
     const crawlResult = await crawler.crawl(
       validatedRequest.url,
       validatedRequest.maxPages,
-      validatedRequest.followExternal
+      validatedRequest.includeSubdomains,
+      { maxDepth: auditConfig.crawlMaxDepth, maxTimeMs: auditConfig.crawlMaxTimeMs, respectRobotsTxt: true }
     );
 
     await crawler.close();
@@ -215,17 +228,28 @@ async function runAuditJob(validatedRequest: ValidatedAuditRequest, jobId: strin
       return;
     }
 
-    console.log(`Discovered ${crawlResult.discoveredUrls.length} pages`);
+    const totalDiscovered = crawlResult.discoveredUrls.length;
+    const unvisitedCount = crawlResult.unvisitedUrls.length;
+    const failedCount = crawlResult.failedUrls.length;
+    metrics.pagesCrawled += totalDiscovered;
+
+    logger.info('Crawl complete', { visited: totalDiscovered, unvisited: unvisitedCount, failed: failedCount });
+
     emitToJob('progress', {
       stage: 'discovered',
-      message: `Found ${crawlResult.discoveredUrls.length} pages`,
+      message: `Crawled ${totalDiscovered} pages${unvisitedCount > 0 ? ` (${unvisitedCount} discovered but not visited)` : ''}`,
       progress: 30,
-      pages: crawlResult.discoveredUrls
+      pages: crawlResult.discoveredUrls,
+      unvisitedPages: crawlResult.unvisitedUrls,
+      failedPages: crawlResult.failedUrls
     });
-    updateJobStatus({ progress: 30, message: `Found ${crawlResult.discoveredUrls.length} pages` });
+    updateJobStatus({
+      progress: 30,
+      message: `Crawled ${totalDiscovered} pages${unvisitedCount > 0 ? ` (${unvisitedCount} skipped)` : ''}`
+    });
 
     // Initialize auditor
-    const auditor = new WCAGAuditor();
+    const auditor = new EnhancedWCAGAuditor();
     await auditor.initialize();
 
     emitToJob('progress', { stage: 'auditing', message: 'Starting accessibility audit...', progress: 40 });
@@ -246,7 +270,8 @@ async function runAuditJob(validatedRequest: ValidatedAuditRequest, jobId: strin
 
     await auditor.close();
 
-    console.log(`Audit complete. Found ${auditReport.totalViolations} violations`);
+    logger.info('Audit complete', { totalViolations: auditReport.totalViolations });
+    metrics.violationsFound += auditReport.totalViolations;
     emitToJob('progress', {
       stage: 'generating',
       message: 'Generating PDF report...',
@@ -257,13 +282,30 @@ async function runAuditJob(validatedRequest: ValidatedAuditRequest, jobId: strin
 
     // Generate PDF with Enterprise generator
     const timestamp = new Date().getTime();
-    const filename = `audit-report-${timestamp}.pdf`;
-    const filepath = join(REPORTS_DIR, filename);
+    const baseName = `audit-report-${timestamp}`;
+    const pdfFile = `${baseName}.pdf`;
+    const jsonFile = `${baseName}.json`;
+    const pdfPath = join(REPORTS_DIR, pdfFile);
+    const jsonPath = join(REPORTS_DIR, jsonFile);
 
-    const pdfGenerator = new EnterpriseReportGenerator();
-    await pdfGenerator.generate(auditReport, filepath);
+    const pdfGenerator = new ExecutiveReportGenerator();
+    // Persist machine-readable JSON next to PDF for reproducibility
+    const enriched = {
+      meta: {
+        generatedAt: new Date().toISOString(),
+        nodeEnv: process.env.NODE_ENV || 'development',
+        axeCoreVersion: require('axe-core/package.json').version,
+        config: {
+          audit: auditConfig,
+        },
+      },
+      report: auditReport,
+    };
+    await writeFile(jsonPath, JSON.stringify(enriched, null, 2), 'utf-8');
 
-    console.log(`PDF report generated: ${filename}`);
+    await pdfGenerator.generate(auditReport, pdfPath);
+
+    logger.info('Reports generated', { pdf: pdfFile, json: jsonFile });
 
     // Send completion via WebSocket
     const resultData = {
@@ -280,16 +322,19 @@ async function runAuditJob(validatedRequest: ValidatedAuditRequest, jobId: strin
         wcagVersion: auditReport.wcagVersion,
         conformanceLevel: auditReport.conformanceLevel,
       },
-      downloadUrl: `/api/download/${filename}`,
+      downloadUrl: `/api/download/${pdfFile}`,
+      jsonUrl: `/api/download/${jsonFile}`,
     };
 
     emitToJob('complete', resultData);
     updateJobStatus({ status: 'complete', progress: 100, message: 'Complete', result: resultData });
+    metrics.completedJobs += 1;
 
   } catch (error: any) {
     console.error('Background job error:', error);
     emitToJob('error', { message: error.message || 'Audit failed' });
     updateJobStatus({ status: 'error', error: error.message || 'Audit failed' });
+    metrics.failedJobs += 1;
   }
 }
 
@@ -298,8 +343,8 @@ app.get('/api/download/:filename', async (req: Request, res: Response) => {
   try {
     const filename = req.params.filename;
 
-    // Security: validate filename
-    if (!/^audit-report-\d+\.pdf$/.test(filename)) {
+    // Security: validate filename (pdf or json)
+    if (!/^audit-report-\d+\.(pdf|json)$/.test(filename)) {
       return res.status(400).json({ error: 'Invalid filename' });
     }
 
@@ -307,24 +352,34 @@ app.get('/api/download/:filename', async (req: Request, res: Response) => {
 
     res.download(filepath, filename, (err) => {
       if (err) {
-        console.error('Download error:', err);
+        logger.error('Download error', err);
         if (!res.headersSent) {
           res.status(404).json({ error: 'Report not found' });
         }
       }
     });
   } catch (error) {
-    console.error('Download error:', error);
+    logger.error('Download error', error);
     res.status(500).json({ error: 'Failed to download report' });
   }
 });
 
 // Error handler
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
-  console.error('Server error:', err);
+  logger.error('Server error', err);
   res.status(500).json({
     error: 'Internal server error',
     message: process.env.NODE_ENV === 'development' ? err.message : undefined
+  });
+});
+
+// Basic metrics endpoint (JSON)
+app.get('/api/metrics', (req: Request, res: Response) => {
+  res.json({
+    ...metrics,
+    runningJobs: Array.from(jobs.values()).filter(j => j.status === 'running').length,
+    uptimeSeconds: Math.round(process.uptime()),
+    timestamp: new Date().toISOString(),
   });
 });
 

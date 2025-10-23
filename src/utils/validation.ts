@@ -17,7 +17,7 @@ export const auditRequestSchema = z.object({
       { message: 'Only HTTP and HTTPS protocols are allowed' }
     ),
   maxPages: z.number().min(1).max(100).optional().default(50),
-  followExternal: z.boolean().optional().default(false),
+  includeSubdomains: z.boolean().optional().default(true),
 });
 
 export type ValidatedAuditRequest = z.infer<typeof auditRequestSchema>;
@@ -36,13 +36,50 @@ export function sanitizeUrl(url: string): string {
 }
 
 /**
- * Check if URL is from the same domain
+ * Check if URL is from the same hostname (exact match)
+ * Example: example.com === example.com ✅
+ *          example.com !== www.example.com ❌
  */
 export function isSameDomain(baseUrl: string, targetUrl: string): boolean {
   try {
     const base = new URL(baseUrl);
     const target = new URL(targetUrl);
     return base.hostname === target.hostname;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Check if URL is from the same base domain (includes subdomains)
+ * Example: example.com ↔ www.example.com ✅
+ *          example.com ↔ blog.example.com ✅
+ *          example.com ↔ facebook.com ❌
+ */
+export function isSameBaseDomain(baseUrl: string, targetUrl: string): boolean {
+  try {
+    const base = new URL(baseUrl);
+    const target = new URL(targetUrl);
+
+    // Extract base domain (e.g., "example.com" from "blog.example.com")
+    const getBaseDomain = (hostname: string): string => {
+      const parts = hostname.split('.');
+
+      // Handle edge cases
+      if (parts.length < 2) {
+        return hostname; // localhost, etc.
+      }
+
+      // Handle special TLDs (co.uk, com.au, etc.)
+      if (parts.length >= 3 && ['co', 'com', 'org', 'gov', 'ac'].includes(parts[parts.length - 2])) {
+        return parts.slice(-3).join('.');
+      }
+
+      // Standard case: take last 2 parts (example.com)
+      return parts.slice(-2).join('.');
+    };
+
+    return getBaseDomain(base.hostname) === getBaseDomain(target.hostname);
   } catch {
     return false;
   }

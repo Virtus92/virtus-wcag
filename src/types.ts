@@ -1,7 +1,7 @@
 export interface AuditRequest {
   url: string;
   maxPages?: number;
-  followExternal?: boolean;
+  includeSubdomains?: boolean; // Include subdomains (www, blog, etc.) in crawl
 }
 
 export interface PageAuditResult {
@@ -13,6 +13,32 @@ export interface PageAuditResult {
   timestamp: Date;
   loadTime?: number;
   statusCode?: number;
+  // Performance metrics
+  performanceMetrics?: {
+    loadTime: number;
+    domContentLoaded: number;
+    firstContentfulPaint?: number;
+    largestContentfulPaint?: number;
+    totalSize?: number;
+    requestCount?: number;
+  };
+  // SPA detection
+  frameworkDetected?: string;
+  isJavaScriptHeavy?: boolean;
+  // Keyboard navigation
+  keyboardAccessibility?: {
+    tabOrderCorrect: boolean;
+    focusVisible: boolean;
+    noKeyboardTraps: boolean;
+    issues: string[];
+  };
+  // Screen reader compatibility
+  screenReaderCompatibility?: {
+    hasProperHeadings: boolean;
+    hasAriaLabels: boolean;
+    hasLandmarks: boolean;
+    score: number; // 0-100
+  };
 }
 
 export interface Violation {
@@ -55,6 +81,14 @@ export interface DeadLink {
 }
 
 export interface CrawlResult {
-  discoveredUrls: string[];
-  failedUrls: string[];
+  discoveredUrls: string[]; // Actually visited and crawled URLs
+  unvisitedUrls: string[]; // Discovered but not visited (hit maxPages limit)
+  failedUrls: FailedUrl[]; // URLs that failed after max retries
+}
+
+export interface FailedUrl {
+  url: string;
+  reason: string;
+  statusCode?: number;
+  retryCount: number;
 }

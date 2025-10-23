@@ -227,7 +227,7 @@ iptables -A INPUT -p tcp --dport 3000 -j DROP
 **Verantwortungsvolle Offenlegung:**
 
 1. **Keine öffentlichen Issues** für Sicherheitslücken
-2. **Email an**: security@example.com
+2. **Email an**: info@dinel.at
 3. **Beschreibung**: Detaillierte Reproduktionsschritte
 4. **Response Time**: 48 Stunden
 
@@ -263,5 +263,5 @@ iptables -A INPUT -p tcp --dport 3000 -j DROP
 
 ---
 
-**Last Updated**: 2024
-**Maintained by**: Virtus Umbra
+**Last Updated**: Januar 2025
+**Maintained by**: Dinel Kurtovic (Virtus Umbra)

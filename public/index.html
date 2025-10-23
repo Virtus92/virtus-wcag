@@ -603,10 +603,11 @@
                         <div class="checkbox-group">
                             <input
                                 type="checkbox"
-                                id="followExternal"
-                                name="followExternal"
+                                id="includeSubdomains"
+                                name="includeSubdomains"
+                                checked
                             >
-                            <label for="followExternal">Externe Links folgen</label>
+                            <label for="includeSubdomains">Subdomains einbeziehen (www, blog, etc.)</label>
                         </div>
                     </div>
 
@@ -811,7 +812,7 @@
 
             const url = document.getElementById('url').value.trim();
             const maxPages = parseInt(document.getElementById('maxPages').value);
-            const followExternal = document.getElementById('followExternal').checked;
+            const includeSubdomains = document.getElementById('includeSubdomains').checked;
 
             clearSession();
 
@@ -834,7 +835,7 @@
                     body: JSON.stringify({
                         url,
                         maxPages,
-                        followExternal,
+                        includeSubdomains,
                         socketId: socket.id
                     }),
                 });

@@ -59,6 +59,23 @@ export const auditConfig = {
 
   /** Wait time for axe-core initialization in milliseconds */
   axeInitWaitMs: parseInt(process.env.AXE_INIT_WAIT_MS || '500', 10),
+
+  /** Stabilization budget: total timeout for quiet page (ms) */
+  stabilityTimeoutMs: parseInt(process.env.STABILITY_TIMEOUT_MS || '30000', 10),
+  /** Stabilization budget: DOM quiet window (ms) */
+  domQuietWindowMs: parseInt(process.env.DOM_QUIET_WINDOW_MS || '800', 10),
+  /** Stabilization budget: max in-flight requests to consider network quiet */
+  inflightMax: parseInt(process.env.INFLIGHT_MAX || '2', 10),
+
+  /** Crawl max depth (frontier) */
+  crawlMaxDepth: parseInt(process.env.CRAWL_MAX_DEPTH || '4', 10),
+  /** Crawl overall time budget (ms) */
+  crawlMaxTimeMs: parseInt(process.env.CRAWL_MAX_TIME_MS || '120000', 10),
+
+  /** HAR mode: off | record | replay */
+  harMode: (process.env.AUDIT_HAR_MODE || 'off') as 'off' | 'record' | 'replay',
+  /** HAR directory for recordings/replay */
+  harDir: process.env.AUDIT_HAR_DIR || 'reports/har',
 } as const;
 
 /**
@@ -104,31 +121,61 @@ export const config = {
 export function validateConfig(): void {
   const errors: string[] = [];
 
-  // Validate server config
-  if (serverConfig.port < 1 || serverConfig.port > 65535) {
-    errors.push(`Invalid PORT: ${serverConfig.port} (must be 1-65535)`);
+  // Re-parse from current environment to reflect runtime/test changes
+  const envPort = process.env.PORT;
+  const port = envPort ? parseInt(envPort, 10) : serverConfig.port;
+  if (!Number.isFinite(port)) {
+    errors.push(`Invalid PORT: ${String(envPort ?? serverConfig.port)} (must be 1-65535)`);
+  } else if (port < 1 || port > 65535) {
+    errors.push(`Invalid PORT: ${String(envPort ?? serverConfig.port)} (must be 1-65535)`);
   }
 
-  // Validate rate limit config
-  if (rateLimitConfig.windowMs < 1000) {
-    errors.push(`Invalid RATE_LIMIT_WINDOW_MS: ${rateLimitConfig.windowMs} (must be >= 1000)`);
-  }
-  if (rateLimitConfig.maxRequests < 1) {
-    errors.push(`Invalid RATE_LIMIT_MAX_REQUESTS: ${rateLimitConfig.maxRequests} (must be >= 1)`);
+  const envWindow = process.env.RATE_LIMIT_WINDOW_MS;
+  const windowMs = envWindow ? parseInt(envWindow, 10) : rateLimitConfig.windowMs;
+  if (!Number.isFinite(windowMs)) {
+    errors.push(`Invalid RATE_LIMIT_WINDOW_MS: ${String(envWindow ?? rateLimitConfig.windowMs)} (must be >= 1000)`);
+  } else if (windowMs < 1000) {
+    errors.push(`Invalid RATE_LIMIT_WINDOW_MS: ${String(envWindow ?? rateLimitConfig.windowMs)} (must be >= 1000)`);
   }
 
-  // Validate audit config
-  if (auditConfig.maxPagesDefault < 1 || auditConfig.maxPagesDefault > auditConfig.maxPagesLimit) {
-    errors.push(`Invalid MAX_PAGES_DEFAULT: ${auditConfig.maxPagesDefault} (must be 1-${auditConfig.maxPagesLimit})`);
+  const envMaxReq = process.env.RATE_LIMIT_MAX_REQUESTS;
+  const maxRequests = envMaxReq ? parseInt(envMaxReq, 10) : rateLimitConfig.maxRequests;
+  if (!Number.isFinite(maxRequests)) {
+    errors.push(`Invalid RATE_LIMIT_MAX_REQUESTS: ${String(envMaxReq ?? rateLimitConfig.maxRequests)} (must be >= 1)`);
+  } else if (maxRequests < 1) {
+    errors.push(`Invalid RATE_LIMIT_MAX_REQUESTS: ${String(envMaxReq ?? rateLimitConfig.maxRequests)} (must be >= 1)`);
   }
-  if (auditConfig.maxPagesLimit < 1 || auditConfig.maxPagesLimit > 1000) {
-    errors.push(`Invalid MAX_PAGES_LIMIT: ${auditConfig.maxPagesLimit} (must be 1-1000)`);
+
+  const envMaxPagesDefault = process.env.MAX_PAGES_DEFAULT;
+  const envMaxPagesLimit = process.env.MAX_PAGES_LIMIT;
+  const maxPagesDefault = envMaxPagesDefault ? parseInt(envMaxPagesDefault, 10) : auditConfig.maxPagesDefault;
+  const maxPagesLimit = envMaxPagesLimit ? parseInt(envMaxPagesLimit, 10) : auditConfig.maxPagesLimit;
+
+  if (!Number.isFinite(maxPagesDefault)) {
+    errors.push(`Invalid MAX_PAGES_DEFAULT: ${String(envMaxPagesDefault ?? auditConfig.maxPagesDefault)} (must be 1-${String(envMaxPagesLimit ?? auditConfig.maxPagesLimit)})`);
+  } else if (maxPagesDefault < 1 || maxPagesDefault > maxPagesLimit) {
+    errors.push(`Invalid MAX_PAGES_DEFAULT: ${String(envMaxPagesDefault ?? auditConfig.maxPagesDefault)} (must be 1-${String(envMaxPagesLimit ?? auditConfig.maxPagesLimit)})`);
   }
-  if (auditConfig.crawlTimeoutMs < 5000 || auditConfig.crawlTimeoutMs > 300000) {
-    errors.push(`Invalid CRAWL_TIMEOUT_MS: ${auditConfig.crawlTimeoutMs} (must be 5000-300000)`);
+  if (!Number.isFinite(maxPagesLimit)) {
+    errors.push(`Invalid MAX_PAGES_LIMIT: ${String(envMaxPagesLimit ?? auditConfig.maxPagesLimit)} (must be 1-1000)`);
+  } else if (maxPagesLimit < 1 || maxPagesLimit > 1000) {
+    errors.push(`Invalid MAX_PAGES_LIMIT: ${String(envMaxPagesLimit ?? auditConfig.maxPagesLimit)} (must be 1-1000)`);
   }
-  if (auditConfig.auditConcurrency < 1 || auditConfig.auditConcurrency > 10) {
-    errors.push(`Invalid AUDIT_CONCURRENCY: ${auditConfig.auditConcurrency} (must be 1-10)`);
+
+  const envCrawlTimeout = process.env.CRAWL_TIMEOUT_MS;
+  const crawlTimeoutMs = envCrawlTimeout ? parseInt(envCrawlTimeout, 10) : auditConfig.crawlTimeoutMs;
+  if (!Number.isFinite(crawlTimeoutMs)) {
+    errors.push(`Invalid CRAWL_TIMEOUT_MS: ${String(envCrawlTimeout ?? auditConfig.crawlTimeoutMs)} (must be 5000-300000)`);
+  } else if (crawlTimeoutMs < 5000 || crawlTimeoutMs > 300000) {
+    errors.push(`Invalid CRAWL_TIMEOUT_MS: ${String(envCrawlTimeout ?? auditConfig.crawlTimeoutMs)} (must be 5000-300000)`);
+  }
+
+  const envConcurrency = process.env.AUDIT_CONCURRENCY;
+  const auditConcurrency = envConcurrency ? parseInt(envConcurrency, 10) : auditConfig.auditConcurrency;
+  if (!Number.isFinite(auditConcurrency)) {
+    errors.push(`Invalid AUDIT_CONCURRENCY: ${String(envConcurrency ?? auditConfig.auditConcurrency)} (must be 1-10)`);
+  } else if (auditConcurrency < 1 || auditConcurrency > 10) {
+    errors.push(`Invalid AUDIT_CONCURRENCY: ${String(envConcurrency ?? auditConfig.auditConcurrency)} (must be 1-10)`);
   }
 
   if (errors.length > 0) {

@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Fixture Site - Home</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header>
+    <!-- Intentionally no skip link -->
+    <h1>Fixture Home</h1>
+    <nav>
+      <a href="/page2.html">Go to Page 2</a>
+      <a href="#"> </a> <!-- empty link (violation) -->
+    </nav>
+  </header>
+
+  <main id="main">
+    <img src="/logo.png" alt="" /> <!-- empty alt is okay if decorative -->
+
+    <button id="btn"></button> <!-- no text and no aria (violation) -->
+
+    <form>
+      <input type="text" id="name" /> <!-- no label (violation) -->
+      <button type="submit">Submit</button>
+    </form>
+
+    <p>Some text content.</p>
+  </main>
+
+  <script>
+    // Make it look SPA-ish
+    document.documentElement.setAttribute('data-reactroot', '');
+  </script>
+</body>
+</html>
+

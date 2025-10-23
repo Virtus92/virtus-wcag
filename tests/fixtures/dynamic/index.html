@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Dynamic Fixture</title>
+</head>
+<body>
+  <main id="root">
+    <h1>Dynamic Page</h1>
+  </main>
+  <script>
+    // Perform a burst of DOM mutations for ~400ms, then stop
+    let count = 0;
+    const interval = setInterval(() => {
+      const el = document.createElement('div');
+      el.textContent = 'mutation ' + (++count);
+      document.getElementById('root').appendChild(el);
+      if (count >= 5) clearInterval(interval);
+    }, 80);
+  </script>
+</body>
+</html>
+
