@@ -1,4 +1,4 @@
-import { describe, it, beforeEach, afterEach, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 
 const ORIGINAL_ENV = { ...process.env };
 

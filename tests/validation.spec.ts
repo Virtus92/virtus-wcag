@@ -20,7 +20,7 @@ describe('validation utils', () => {
     let callCount = 0;
 
     class InterceptURL extends OriginalURL {
-      constructor(input: string, base?: string | URL) {
+      constructor(input: string | URL, base?: string | URL) {
         if (input === 'https://refine-failure.test') {
           callCount += 1;
           if (callCount === 2) {
@@ -31,7 +31,6 @@ describe('validation utils', () => {
       }
     }
 
-    // @ts-expect-error override for test
     global.URL = InterceptURL;
 
     try {
@@ -41,7 +40,6 @@ describe('validation utils', () => {
         expect(result.error.issues[0]?.message).toBe('Only HTTP and HTTPS protocols are allowed');
       }
     } finally {
-      // @ts-expect-error restore original URL
       global.URL = OriginalURL;
     }
   });

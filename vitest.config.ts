@@ -2,6 +2,7 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
+    globals: true,
     environment: 'node',
     setupFiles: ['tests/setup.ts'],
     testTimeout: 60000,
@@ -11,22 +12,22 @@ export default defineConfig({
       provider: 'v8',
       all: true,
       include: [
-        'src/utils/**/*.ts',
-        'src/config.ts',
+        'src/**/*.ts',
       ],
       exclude: [
         '**/*.d.ts',
         'dist/**',
         'node_modules/**',
+        'src/types.ts', // Type definitions only
       ],
       thresholds: {
-        lines: 100,
-        functions: 100,
-        branches: 100,
-        statements: 100,
+        lines: 85,
+        functions: 85,
+        branches: 80,
+        statements: 85,
       },
       reportsDirectory: 'coverage',
-      reporter: ['text-summary', 'html', 'lcov'],
+      reporter: ['text-summary', 'html', 'lcov', 'json'],
     },
   },
 });

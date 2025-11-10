@@ -646,49 +646,66 @@ export class EnhancedWCAGAuditor {
       });
     }
 
-    // Deduplicate violations
-    const uniqueViolationsMap = new Map<string, Violation>();
-
-    pageResults.forEach(page => {
-      page.violations.forEach(v => {
-        const firstNodeHtml = v.nodes[0]?.html || '';
-        const uniqueKey = `${v.id}::${firstNodeHtml}`;
-
-        if (!uniqueViolationsMap.has(uniqueKey)) {
-          uniqueViolationsMap.set(uniqueKey, v);
-        }
-      });
-    });
-
-    // Calculate statistics
-    const uniqueViolations = Array.from(uniqueViolationsMap.values());
-    let totalViolations = uniqueViolations.length;
+    // Calculate violations WITHOUT deduplication
+    // Each violation instance is counted separately across all pages
+    let totalViolations = 0;
     let criticalIssues = 0;
     let seriousIssues = 0;
     let moderateIssues = 0;
     let minorIssues = 0;
 
-    uniqueViolations.forEach(v => {
-      switch (v.impact) {
-        case 'critical':
-          criticalIssues++;
-          break;
-        case 'serious':
-          seriousIssues++;
-          break;
-        case 'moderate':
-          moderateIssues++;
-          break;
-        case 'minor':
-          minorIssues++;
-          break;
-      }
+    pageResults.forEach(page => {
+      page.violations.forEach(v => {
+        totalViolations++;
+        switch (v.impact) {
+          case 'critical':
+            criticalIssues++;
+            break;
+          case 'serious':
+            seriousIssues++;
+            break;
+          case 'moderate':
+            moderateIssues++;
+            break;
+          case 'minor':
+            minorIssues++;
+            break;
+        }
+      });
+    });
+
+    // Track unique violation TYPES (for reporting variety of issues)
+    const uniqueViolationTypesSet = new Set<string>();
+    pageResults.forEach(page => {
+      page.violations.forEach(v => {
+        uniqueViolationTypesSet.add(v.id);
+      });
+    });
+    const uniqueViolationTypes = uniqueViolationTypesSet.size;
+
+    // Calculate accessibility score
+    const accessibilityScore = this.calculateAccessibilityScore(pageResults, {
+      totalViolations,
+      criticalIssues,
+      seriousIssues,
+      moderateIssues,
+      minorIssues
+    });
+
+    // Calculate score breakdown
+    const scoreBreakdown = this.calculateScoreBreakdown(pageResults, {
+      totalViolations,
+      criticalIssues,
+      seriousIssues,
+      moderateIssues,
+      minorIssues
     });
 
     return {
       baseUrl,
       totalPages: pageResults.length,
       totalViolations,
+      uniqueViolationTypes,
       criticalIssues,
       seriousIssues,
       moderateIssues,
@@ -696,8 +713,153 @@ export class EnhancedWCAGAuditor {
       pages: pageResults,
       scanDate: new Date(),
       wcagVersion: '2.2',
-      conformanceLevel: 'AA'
+      conformanceLevel: 'AA',
+      accessibilityScore,
+      scoreBreakdown
     };
+  }
+
+  /**
+   * Calculate overall accessibility score (0-100)
+   * Weighted scoring algorithm based on violations and quality metrics
+   */
+  private calculateAccessibilityScore(
+    pages: PageAuditResult[],
+    violations: {
+      totalViolations: number;
+      criticalIssues: number;
+      seriousIssues: number;
+      moderateIssues: number;
+      minorIssues: number;
+    }
+  ): number {
+    // Start with perfect score
+    let score = 100;
+
+    // Deduct points for violations (weighted by severity)
+    // Critical: -10 points each (severe impact)
+    // Serious: -4 points each (significant impact)
+    // Moderate: -1 point each (medium impact)
+    // Minor: -0.2 points each (low impact)
+    score -= violations.criticalIssues * 10;
+    score -= violations.seriousIssues * 4;
+    score -= violations.moderateIssues * 1;
+    score -= violations.minorIssues * 0.2;
+
+    // Consider quality metrics from pages
+    const avgKeyboardScore = this.calculateAverageKeyboardScore(pages);
+    const avgScreenReaderScore = this.calculateAverageScreenReaderScore(pages);
+    const avgPerformanceScore = this.calculateAveragePerformanceScore(pages);
+
+    // Weighted combination (50% violations, 20% keyboard, 20% screen reader, 10% performance)
+    score = score * 0.5 + avgKeyboardScore * 0.2 + avgScreenReaderScore * 0.2 + avgPerformanceScore * 0.1;
+
+    // Ensure score stays within 0-100 range
+    return Math.max(0, Math.min(100, Math.round(score)));
+  }
+
+  /**
+   * Calculate detailed score breakdown by category
+   */
+  private calculateScoreBreakdown(
+    pages: PageAuditResult[],
+    violations: {
+      totalViolations: number;
+      criticalIssues: number;
+      seriousIssues: number;
+      moderateIssues: number;
+      minorIssues: number;
+    }
+  ): {
+    wcagCompliance: number;
+    keyboardAccessibility: number;
+    screenReaderCompatibility: number;
+    performanceScore: number;
+  } {
+    // WCAG Compliance score based on violations
+    let wcagScore = 100;
+    wcagScore -= violations.criticalIssues * 10;
+    wcagScore -= violations.seriousIssues * 4;
+    wcagScore -= violations.moderateIssues * 1;
+    wcagScore -= violations.minorIssues * 0.2;
+    wcagScore = Math.max(0, Math.min(100, Math.round(wcagScore)));
+
+    return {
+      wcagCompliance: wcagScore,
+      keyboardAccessibility: this.calculateAverageKeyboardScore(pages),
+      screenReaderCompatibility: this.calculateAverageScreenReaderScore(pages),
+      performanceScore: this.calculateAveragePerformanceScore(pages)
+    };
+  }
+
+  /**
+   * Calculate average keyboard accessibility score across all pages
+   */
+  private calculateAverageKeyboardScore(pages: PageAuditResult[]): number {
+    const pagesWithKeyboard = pages.filter(p => p.keyboardAccessibility);
+    if (pagesWithKeyboard.length === 0) return 0;
+
+    let totalScore = 0;
+    pagesWithKeyboard.forEach(page => {
+      const kb = page.keyboardAccessibility!;
+      let score = 100;
+      if (!kb.tabOrderCorrect) score -= 30;
+      if (!kb.focusVisible) score -= 40;
+      if (!kb.noKeyboardTraps) score -= 30;
+      totalScore += Math.max(0, score);
+    });
+
+    return Math.round(totalScore / pagesWithKeyboard.length);
+  }
+
+  /**
+   * Calculate average screen reader compatibility score across all pages
+   */
+  private calculateAverageScreenReaderScore(pages: PageAuditResult[]): number {
+    const pagesWithScreenReader = pages.filter(p => p.screenReaderCompatibility);
+    if (pagesWithScreenReader.length === 0) return 0;
+
+    const totalScore = pagesWithScreenReader.reduce(
+      (sum, page) => sum + page.screenReaderCompatibility!.score,
+      0
+    );
+
+    return Math.round(totalScore / pagesWithScreenReader.length);
+  }
+
+  /**
+   * Calculate average performance score based on load times
+   * Scores based on Google's Core Web Vitals thresholds
+   */
+  private calculateAveragePerformanceScore(pages: PageAuditResult[]): number {
+    const pagesWithMetrics = pages.filter(p => p.performanceMetrics);
+    if (pagesWithMetrics.length === 0) return 100; // No data = no deduction
+
+    let totalScore = 0;
+    pagesWithMetrics.forEach(page => {
+      const metrics = page.performanceMetrics!;
+      let score = 100;
+
+      // Load Time scoring (ideal: <3s)
+      if (metrics.loadTime > 5000) score -= 30;
+      else if (metrics.loadTime > 3000) score -= 15;
+
+      // FCP scoring (ideal: <1.8s)
+      if (metrics.firstContentfulPaint) {
+        if (metrics.firstContentfulPaint > 3000) score -= 20;
+        else if (metrics.firstContentfulPaint > 1800) score -= 10;
+      }
+
+      // LCP scoring (ideal: <2.5s)
+      if (metrics.largestContentfulPaint) {
+        if (metrics.largestContentfulPaint > 4000) score -= 20;
+        else if (metrics.largestContentfulPaint > 2500) score -= 10;
+      }
+
+      totalScore += Math.max(0, score);
+    });
+
+    return Math.round(totalScore / pagesWithMetrics.length);
   }
 
   async close(): Promise<void> {

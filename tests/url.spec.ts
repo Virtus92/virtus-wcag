@@ -21,13 +21,11 @@ describe('URL utilities', () => {
       },
     });
 
-    // @ts-expect-error override for test
     global.URL = CustomURL;
     try {
       const out = canonicalizeUrl('https://default-port.test:443/path/');
       expect(out).toBe('https://default-port.test/path');
     } finally {
-      // @ts-expect-error restore original URL
       global.URL = OriginalURL;
     }
   });

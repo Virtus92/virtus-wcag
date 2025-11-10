@@ -60,7 +60,8 @@ export interface ViolationNode {
 export interface AuditReport {
   baseUrl: string;
   totalPages: number;
-  totalViolations: number;
+  totalViolations: number; // Total count of ALL violations across all pages (not deduplicated)
+  uniqueViolationTypes: number; // Count of unique violation types (deduplicated by ID)
   criticalIssues: number;
   seriousIssues: number;
   moderateIssues: number;
@@ -71,6 +72,25 @@ export interface AuditReport {
   conformanceLevel: string;
   scanDuration?: number;
   deadLinks?: DeadLink[];
+
+  // Enhanced reporting features
+  accessibilityScore: number; // Overall accessibility score (0-100)
+  scoreBreakdown: {
+    wcagCompliance: number; // Based on violations (0-100)
+    keyboardAccessibility: number; // Average keyboard score (0-100)
+    screenReaderCompatibility: number; // Average screen reader score (0-100)
+    performanceScore: number; // Based on load times (0-100)
+  };
+
+  // Crawl metadata for transparency
+  crawlMetadata?: {
+    totalDiscovered: number; // Total URLs found during crawl
+    totalAudited: number; // URLs successfully audited
+    totalSkipped: number; // URLs discovered but not audited (hit maxPages limit)
+    totalFailed: number; // URLs that failed to load
+    unvisitedUrls: string[]; // List of discovered but not audited URLs
+    failedUrls: FailedUrl[]; // List of failed URLs with reasons
+  };
 }
 
 export interface DeadLink {

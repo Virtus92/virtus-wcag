@@ -270,6 +270,26 @@ async function runAuditJob(validatedRequest: ValidatedAuditRequest, jobId: strin
 
     await auditor.close();
 
+    // Enrich report with crawl metadata for transparency
+    auditReport.crawlMetadata = {
+      totalDiscovered: crawlResult.discoveredUrls.length + crawlResult.unvisitedUrls.length,
+      totalAudited: crawlResult.discoveredUrls.length,
+      totalSkipped: crawlResult.unvisitedUrls.length,
+      totalFailed: crawlResult.failedUrls.length,
+      unvisitedUrls: crawlResult.unvisitedUrls,
+      failedUrls: crawlResult.failedUrls
+    };
+
+    // Populate deadLinks from failed URLs
+    if (crawlResult.failedUrls.length > 0) {
+      auditReport.deadLinks = crawlResult.failedUrls.map(f => ({
+        url: f.url,
+        foundOn: [], // TODO: Track referrer URLs in future enhancement
+        statusCode: f.statusCode || 0,
+        statusText: f.reason
+      }));
+    }
+
     logger.info('Audit complete', { totalViolations: auditReport.totalViolations });
     metrics.violationsFound += auditReport.totalViolations;
     emitToJob('progress', {
@@ -337,6 +357,47 @@ async function runAuditJob(validatedRequest: ValidatedAuditRequest, jobId: strin
     metrics.failedJobs += 1;
   }
 }
+
+// Job status endpoint - for polling
+app.get('/api/audit/:jobId', async (req: Request, res: Response) => {
+  try {
+    const jobId = req.params.jobId;
+    const job = jobs.get(jobId);
+
+    if (!job) {
+      return res.status(404).json({
+        error: 'Job not found',
+        message: 'Job may have expired or does not exist'
+      });
+    }
+
+    // Return job status
+    if (job.status === 'complete') {
+      return res.json({
+        status: 'completed',
+        jobId: job.jobId,
+        progress: 100,
+        result: job.result
+      });
+    } else if (job.status === 'error') {
+      return res.json({
+        status: 'failed',
+        jobId: job.jobId,
+        error: job.error
+      });
+    } else {
+      return res.json({
+        status: 'running',
+        jobId: job.jobId,
+        progress: job.progress,
+        message: job.message
+      });
+    }
+  } catch (error) {
+    logger.error('Job status error', error);
+    res.status(500).json({ error: 'Failed to get job status' });
+  }
+});
 
 // Download PDF endpoint
 app.get('/api/download/:filename', async (req: Request, res: Response) => {

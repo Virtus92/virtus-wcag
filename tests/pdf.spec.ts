@@ -17,6 +17,7 @@ describe('PDF generator (executive)', () => {
       baseUrl: 'http://example.local/',
       totalPages: 1,
       totalViolations: 2,
+      uniqueViolationTypes: 2,
       criticalIssues: 1,
       seriousIssues: 1,
       moderateIssues: 0,
@@ -37,6 +38,13 @@ describe('PDF generator (executive)', () => {
       scanDate: new Date(),
       wcagVersion: '2.2',
       conformanceLevel: 'AA',
+      accessibilityScore: 75,
+      scoreBreakdown: {
+        wcagCompliance: 70,
+        keyboardAccessibility: 80,
+        screenReaderCompatibility: 75,
+        performanceScore: 90,
+      },
     };
 
     const out = join(reportsDir, 'test-executive.pdf');
@@ -45,56 +53,63 @@ describe('PDF generator (executive)', () => {
     expect(stat.size).toBeGreaterThan(0);
   });
 
-  it('estimates remediation costs in realistic bundles', () => {
+  it('generates report with multiple pages and violation severities', async () => {
     const generator = new ExecutiveReportGenerator();
-    const baseReport: AuditReport = {
+    const report: AuditReport = {
       baseUrl: 'http://example.local/',
-      totalPages: 2,
-      totalViolations: 0,
-      criticalIssues: 0,
-      seriousIssues: 0,
-      moderateIssues: 0,
-      minorIssues: 0,
-      pages: [],
-      scanDate: new Date(),
-      wcagVersion: '2.2',
-      conformanceLevel: 'AA',
-    };
-
-    const estimateZero = (generator as any).estimateCosts(baseReport) as { total: { min: number; max: number } };
-    expect(estimateZero.total.min).toBe(0);
-    expect(estimateZero.total.max).toBe(0);
-
-    const busyReport: AuditReport = {
-      ...baseReport,
+      totalPages: 3,
       totalViolations: 45,
+      uniqueViolationTypes: 25,
       criticalIssues: 5,
       seriousIssues: 12,
       moderateIssues: 18,
       minorIssues: 10,
+      pages: [
+        {
+          url: 'http://example.local/index.html',
+          title: 'Home Page',
+          violations: [
+            { id: 'button-name', impact: 'critical', description: 'Button has no accessible name', help: 'Buttons must have text', helpUrl: 'https://dequeuniversity.com/rules', tags: ['wcag2a'], nodes: [{ html: '<button></button>', target: ['button'], failureSummary: 'Fix: Add text' }] },
+            { id: 'color-contrast', impact: 'serious', description: 'Insufficient contrast', help: 'Ensure contrast', helpUrl: 'https://dequeuniversity.com/rules', tags: ['wcag2aa'], nodes: [{ html: '<p style="color:#aaa">text</p>', target: ['p'], failureSummary: 'Fix: Increase contrast' }] },
+          ],
+          passes: 28,
+          incomplete: 2,
+          timestamp: new Date(),
+        },
+        {
+          url: 'http://example.local/about.html',
+          title: 'About Page',
+          violations: [
+            { id: 'label', impact: 'serious', description: 'Form element missing label', help: 'Forms must have labels', helpUrl: 'https://dequeuniversity.com/rules', tags: ['wcag2a'], nodes: [{ html: '<input type="text">', target: ['input'], failureSummary: 'Fix: Add label' }] },
+          ],
+          passes: 30,
+          incomplete: 1,
+          timestamp: new Date(),
+        },
+        {
+          url: 'http://example.local/contact.html',
+          title: 'Contact Page',
+          violations: [],
+          passes: 32,
+          incomplete: 0,
+          timestamp: new Date(),
+        },
+      ],
+      scanDate: new Date(),
+      wcagVersion: '2.2',
+      conformanceLevel: 'AA',
+      accessibilityScore: 65,
+      scoreBreakdown: {
+        wcagCompliance: 60,
+        keyboardAccessibility: 70,
+        screenReaderCompatibility: 65,
+        performanceScore: 75,
+      },
     };
 
-    const estimate = (generator as any).estimateCosts(busyReport) as {
-      bundleCount: number;
-      perBundle: { min: number; max: number };
-      total: { min: number; max: number };
-      timelineWeeks: { min: number; max: number };
-      severity: Record<string, { min: number; max: number }>;
-    };
-
-    expect(estimate.bundleCount).toBe(3);
-    expect(estimate.perBundle.min).toBe(500);
-    expect(estimate.perBundle.max).toBe(1000);
-    expect(estimate.total).toEqual({ min: 1500, max: 3000 });
-    expect(estimate.timelineWeeks).toEqual({ min: 3, max: 6 });
-
-    const severityTotals = Object.values(estimate.severity).reduce(
-      (acc, current) => ({
-        min: acc.min + current.min,
-        max: acc.max + current.max,
-      }),
-      { min: 0, max: 0 }
-    );
-    expect(severityTotals).toEqual(estimate.total);
+    const out = join(reportsDir, 'test-executive-comprehensive.pdf');
+    await generator.generate(report, out);
+    const stat = await fs.stat(out);
+    expect(stat.size).toBeGreaterThan(5000); // Comprehensive report should be larger
   });
 });

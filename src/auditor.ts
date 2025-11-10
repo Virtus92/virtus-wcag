@@ -270,10 +270,19 @@ export class WCAGAuditor {
       }
     });
 
+    // Calculate unique violation types
+    const uniqueViolationTypesSet = new Set<string>();
+    pageResults.forEach(page => {
+      page.violations.forEach(v => {
+        uniqueViolationTypesSet.add(v.id);
+      });
+    });
+
     return {
       baseUrl,
       totalPages: pageResults.length,
       totalViolations,
+      uniqueViolationTypes: uniqueViolationTypesSet.size,
       criticalIssues,
       seriousIssues,
       moderateIssues,
@@ -281,7 +290,15 @@ export class WCAGAuditor {
       pages: pageResults,
       scanDate: new Date(),
       wcagVersion: '2.2',
-      conformanceLevel: 'AA'
+      conformanceLevel: 'AA',
+      // Legacy auditor: Basic scores (enhanced auditor has better algorithm)
+      accessibilityScore: Math.max(0, 100 - (criticalIssues * 10 + seriousIssues * 4 + moderateIssues * 1)),
+      scoreBreakdown: {
+        wcagCompliance: Math.max(0, 100 - (criticalIssues * 10 + seriousIssues * 4 + moderateIssues * 1)),
+        keyboardAccessibility: 0, // Not available in legacy auditor
+        screenReaderCompatibility: 0, // Not available in legacy auditor
+        performanceScore: 100 // Not available in legacy auditor
+      }
     };
   }
 

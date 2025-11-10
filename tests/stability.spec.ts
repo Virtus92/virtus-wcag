@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { chromium, Browser, Page } from 'playwright';
 import { EventEmitter } from 'events';
 import { waitForQuietPage, applyDeterministicContext } from '../src/utils/stability';
