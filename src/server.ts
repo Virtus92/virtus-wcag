@@ -14,7 +14,6 @@ import { auditRequestSchema, ValidatedAuditRequest } from './utils/validation';
 import crypto from 'crypto';
 import { auditConfig, jobConfig, loggingConfig, serverConfig } from './config';
 import logger from './utils/logger';
-import { chromium } from 'playwright';
 
 config();
 
@@ -200,13 +199,16 @@ async function runAuditJob(validatedRequest: ValidatedAuditRequest, jobId: strin
     }
   };
 
+  let crawler: WebCrawler | null = null;
+  let auditor: EnhancedWCAGAuditor | null = null;
+
   try {
     logger.info('Starting background audit', { url: validatedRequest.url });
     emitToJob('progress', { stage: 'crawling', message: 'Initializing crawler...', progress: 5 });
     updateJobStatus({ progress: 5, message: 'Initializing crawler...' });
 
     // Initialize crawler
-    const crawler = new WebCrawler();
+    crawler = new WebCrawler();
     await crawler.initialize();
 
     emitToJob('progress', { stage: 'crawling', message: `Crawling ${validatedRequest.url}...`, progress: 10 });
@@ -221,6 +223,7 @@ async function runAuditJob(validatedRequest: ValidatedAuditRequest, jobId: strin
     );
 
     await crawler.close();
+    crawler = null;
 
     if (crawlResult.discoveredUrls.length === 0) {
       emitToJob('error', { message: 'No pages found to audit' });
@@ -249,7 +252,7 @@ async function runAuditJob(validatedRequest: ValidatedAuditRequest, jobId: strin
     });
 
     // Initialize auditor
-    const auditor = new EnhancedWCAGAuditor();
+    auditor = new EnhancedWCAGAuditor();
     await auditor.initialize();
 
     emitToJob('progress', { stage: 'auditing', message: 'Starting accessibility audit...', progress: 40 });
@@ -269,6 +272,7 @@ async function runAuditJob(validatedRequest: ValidatedAuditRequest, jobId: strin
     });
 
     await auditor.close();
+    auditor = null;
 
     // Enrich report with crawl metadata for transparency
     auditReport.crawlMetadata = {
@@ -355,6 +359,9 @@ async function runAuditJob(validatedRequest: ValidatedAuditRequest, jobId: strin
     emitToJob('error', { message: error.message || 'Audit failed' });
     updateJobStatus({ status: 'error', error: error.message || 'Audit failed' });
     metrics.failedJobs += 1;
+  } finally {
+    if (crawler) await crawler.close().catch(err => logger.error('Error closing crawler in finally', err));
+    if (auditor) await auditor.close().catch(err => logger.error('Error closing auditor in finally', err));
   }
 }
 

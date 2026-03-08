@@ -307,8 +307,13 @@ export class WCAGAuditor {
    * @throws {Error} If browser close fails
    */
   async close(): Promise<void> {
-    if (this.browser) {
-      await this.browser.close();
+    try {
+      if (this.browser) {
+        await this.browser.close();
+      }
+    } catch (err) {
+      console.error('Error closing legacy auditor browser:', err);
+    } finally {
       this.browser = null;
     }
   }

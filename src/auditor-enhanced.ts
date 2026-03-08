@@ -863,13 +863,23 @@ export class EnhancedWCAGAuditor {
   }
 
   async close(): Promise<void> {
-    if (this.context) {
-      await this.context.close();
+    try {
+      if (this.context) {
+        await this.context.close();
+      }
+    } catch (err) {
+      console.error('Error closing auditor context:', err);
+    } finally {
       this.context = null;
-    }
-    if (this.browser) {
-      await this.browser.close();
-      this.browser = null;
+      try {
+        if (this.browser) {
+          await this.browser.close();
+        }
+      } catch (err) {
+        console.error('Error closing auditor browser:', err);
+      } finally {
+        this.browser = null;
+      }
     }
   }
 }
