@@ -204,7 +204,6 @@ Vollständige Konfiguration siehe `.env.example`
 │   └── index.html                     # Web Interface
 ├── reports/                           # Generated PDFs (gitignored)
 ├── .github/workflows/                 # CI/CD Pipelines
-├── AGENTS.md                          # Development Guidelines
 ├── SECURITY.md                        # Security Documentation
 ├── docker-compose.yml                 # Docker Compose Config
 ├── Dockerfile                         # Production Container
@@ -334,7 +333,7 @@ Contributions sind willkommen! Bitte:
 Bei Fragen oder Problemen:
 - **GitHub Issues**: Erstelle ein Issue im Repository
 - **Email**: info@dinel.at
-- **Dokumentation**: Siehe README.md, SECURITY.md, AGENTS.md
+- **Dokumentation**: Siehe README.md und SECURITY.md
 - **Logs**: `docker logs <container>` oder Console Output prüfen
 
 ---
