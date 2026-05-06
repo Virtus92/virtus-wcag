@@ -3,7 +3,7 @@ services:
     build: .
     container_name: wcag-audit-tool
     ports:
-      - "3001:3001"
+      - "4001:3001"
     environment:
       - NODE_ENV=production
       - PORT=3001
